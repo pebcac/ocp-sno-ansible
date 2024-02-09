@@ -1,0 +1,19 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: master
+  name: 50-master-kubelet-reserve-resources
+spec:
+  config:
+    ignition:
+      version: 3.1.0
+    systemd:
+      units:
+        - name: kubelet.service
+          dropins:
+            - name: 20-reserve-resources.conf
+              contents: |
+                [Service]
+                Environment="KUBELET_EXTRA_ARGS=--system-reserved=cpu=4,memory=16Gi --kube-reserved=cpu=2,memory=8Gi"
+

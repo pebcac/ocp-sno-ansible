@@ -1,15 +1,66 @@
 ---
-
-- name: Install OpenShift
-  hosts: all
+- name: OpenShift Deployment with Additional Configurations
+  hosts: localhost
+  gather_facts: no
   tasks:
-    - name: Copy OpenShift install-config.yaml
-      copy:
-        src: ${PWD}/src/install-config.yaml
-        dest: ${PWD}/src/install-config.yaml
+    - name: Install OpenShift
+      block:
+        - name: Copy OpenShift install-config.yaml
+          copy:
+            src: ./src/install-config.yaml
+            dest: /tmp/install-config.yaml
 
-    - name: Run OpenShift Installer
-      shell: openshift-install create cluster --dir={PWD} --log-level=info
-      args:
-        chdir: {PWD}
-        creates: {PWD}/.openshift_install.log
+        - name: Run OpenShift Installer
+          shell: openshift-install create cluster --dir=/tmp --log-level=info
+          async: 3600
+          poll: 30
+
+    - name: Configure HTPasswd Authentication in OpenShift
+      block:
+        - name: Create HTPasswd file
+          command: htpasswd -cB ./files/htpasswd username
+          become: yes
+
+        - name: Create HTPasswd Secret in OpenShift
+          shell: oc create secret generic htpasswd-secret --from-file=htpasswd=./files/htpasswd -n openshift-config
+
+        - name: Apply the HTPasswd CRD
+          shell: oc apply -f ./src/htpasswd-crd.yaml
+
+    - name: Install RHODS-Operator
+      block:
+        - name: Apply RHODS Operator Subscription
+          shell: oc apply -f ./src/rhods-subscription.yaml
+
+    - name: Validate Deployments
+      block:
+        - name: Check RHODS-Operator Pods
+          shell: oc get pods -n rhods-operator-namespace
+          register: rhods_pods
+
+        - name: Output Pod Status
+          debug:
+            msg: "{{ rhods_pods.stdout }}"
+
+    - name: Apply MachineConfig for kubelet resource reservation
+      block:
+        - name: Create MachineConfig for kubelet
+          shell: oc apply -f ./src/50-master-kubelet-reserve-resources.yaml
+
+    - name: Install NFD Operator
+      block:
+        - name: Create OperatorGroup for NFD
+          shell: oc apply -f ./src/nfd-operatorgroup.yaml
+
+        - name: Subscribe to NFD Operator
+          shell: oc apply -f ./src/nfd-subscription.yaml
+
+        - name: Wait for NFD Operator to be ready
+          shell: oc get csv -n openshift-operators | grep nfd
+          register: nfd_operator_check
+          until: nfd_operator_check.stdout.find("Succeeded") != -1
+          retries: 30
+          delay: 10
+
+        - name: Deploy NFD Custom Resource
+          shell: oc apply -f ./src/nfd-cr.yaml
