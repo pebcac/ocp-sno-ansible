@@ -33,7 +33,7 @@
           shell: oc apply -f ./src/rhods-subscription.yaml
 
         - name: Apply Data Science Cluster Configuration
-          shell: oc apply -f /path/to/data-science-cluster-config.yaml
+          shell: oc apply -f ${PWD}/src/data-science-cluster-config.yaml
           register: ds_cluster_creation
 
         - name: Check if Data Science Cluster Creation was Successful
