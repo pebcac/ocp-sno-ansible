@@ -1,5 +1,5 @@
 ---
-- name: OpenShift Deployment with Additional Configurations
+- name: OpenShift Deployment with RHODS and NFD
   hosts: localhost
   gather_facts: no
   tasks:
@@ -18,11 +18,11 @@
     - name: Configure HTPasswd Authentication in OpenShift
       block:
         - name: Create HTPasswd file
-          command: htpasswd -cB ./files/htpasswd username
+          command: htpasswd -cB ./src/htpasswd username
           become: yes
 
         - name: Create HTPasswd Secret in OpenShift
-          shell: oc create secret generic htpasswd-secret --from-file=htpasswd=./files/htpasswd -n openshift-config
+          shell: oc create secret generic htpasswd-secret --from-file=htpasswd=./src/htpasswd -n openshift-config
 
         - name: Apply the HTPasswd CRD
           shell: oc apply -f ./src/htpasswd-crd.yaml
@@ -32,7 +32,24 @@
         - name: Apply RHODS Operator Subscription
           shell: oc apply -f ./src/rhods-subscription.yaml
 
-    - name: Validate Deployments
+        - name: Apply Data Science Cluster Configuration
+          shell: oc apply -f /path/to/data-science-cluster-config.yaml
+          register: ds_cluster_creation
+
+        - name: Check if Data Science Cluster Creation was Successful
+          fail:
+            msg: "Failed to create Data Science Cluster. Please check the configuration."
+          when: ds_cluster_creation.stderr != ''
+
+        - name: Wait for Data Science Cluster to be Ready
+          shell: oc get <ResourceType> <ResourceName> -o jsonpath='{.status.ready}'
+          register: ds_cluster_status
+          until: ds_cluster_status.stdout == "true"
+          retries: 30
+          delay: 10
+          when: ds_cluster_creation is succeeded
+
+    - name: Validate RHODS Deployment
       block:
         - name: Check RHODS-Operator Pods
           shell: oc get pods -n rhods-operator-namespace
@@ -64,3 +81,28 @@
 
         - name: Deploy NFD Custom Resource
           shell: oc apply -f ./src/nfd-cr.yaml
+
+        - name: Get Nodes and Check for NFD Labels
+          shell: oc get nodes -o=jsonpath='{range .items[*]}{.metadata.name}{"\n"}{.metadata.labels}{"\n\n"}{end}'
+          register: nodes_with_labels
+          ignore_errors: yes
+
+        - name: Fail if Command to Get Nodes Failed
+          fail:
+            msg: "Failed to get nodes and their labels. Please check your OpenShift CLI configuration and permissions."
+          when: nodes_with_labels is failed
+
+        - name: Check if NFD Labels are Present
+          set_fact:
+            nfd_labels_present: "{{ 'feature.node.kubernetes.io/' in nodes_with_labels.stdout }}"
+          when: nodes_with_labels is succeeded
+
+        - name: Fail if No NFD Labels Found
+          fail:
+            msg: "No NFD labels found on any nodes. Ensure the NFD Operator is installed and configured correctly."
+          when: not nfd_labels_present and (nodes_with_labels is succeeded)
+
+        - name: Output Validation Result
+          debug:
+            msg: "NFD labels are present on nodes: {{ nfd_labels_present }}"
+          when: nfd_labels_present
