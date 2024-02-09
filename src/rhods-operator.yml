@@ -1,0 +1,7 @@
+---
+
+- name: Install RHODS-Operator
+  hosts: all
+  tasks:
+    - name: Apply RHODS Operator Subscription
+      shell: oc apply -f ${PWD}/src/rhods-subscription.yaml

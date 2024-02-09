@@ -1,0 +1,15 @@
+---
+
+- name: Install OpenShift
+  hosts: all
+  tasks:
+    - name: Copy OpenShift install-config.yaml
+      copy:
+        src: ${PWD}/src/install-config.yaml
+        dest: ${PWD}/src/install-config.yaml
+
+    - name: Run OpenShift Installer
+      shell: openshift-install create cluster --dir={PWD} --log-level=info
+      args:
+        chdir: {PWD}
+        creates: {PWD}/.openshift_install.log
