@@ -1,0 +1,22 @@
+apiVersion: v1
+baseDomain: example.com #Use your prefered base domain (i.e. intel.com)
+compute:
+- name: worker
+  replicas: 0
+controlPlane:
+  name: master
+  replicas: 1
+metadata:
+  name: sno-cluster #This is the name of your OpenShift cluster. You can change it as you like.
+networking:
+  clusterNetwork:
+  - cidr: 10.128.0.0/14
+    hostPrefix: 23
+  networkType: OVNKubernetes
+  serviceNetwork:
+  - 172.30.0.0/16
+platform:
+  none: {}
+fips: false
+pullSecret: '{"auths": ...}' #Replace with your pullSecret
+sshKey: 'ssh-ed25519 AAAA...' #Replace with your ssh pub key
